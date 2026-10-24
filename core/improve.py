@@ -105,8 +105,10 @@ def improve(router, item):
     (ROOT / ".selfagent" / "research").mkdir(parents=True, exist_ok=True)
     (ROOT / f".selfagent/research/{id_}.md").write_text(f"# {text}\n\n```json\n{json.dumps(cands, indent=2)}\n```\n\nPicked: {cand.get('name')}\n",
                                              encoding="utf-8")
+    state.task_phase(id_, "plan")
     state.kv_update("STATE.md", phase="plan")
     summary, probe = _plan(router, text, cand)
+    state.task_phase(id_, "baseline")
     state.kv_update("STATE.md", phase="baseline")
     before = sub_bench(probe)
     gitutil.ensure_clean()
@@ -115,7 +117,8 @@ def improve(router, item):
     ok, why, after, smoke = False, [], None, ""
     try:
         gitutil.git("checkout", "-b", branch)
-        state.kv_update("STATE.md", phase="implement")
+        state.task_phase(id_, "implement")
+    state.kv_update("STATE.md", phase="implement")
         agent.run_agent(router, IMPL_SYS, f"Weakness: {text}\nChosen tech: {json.dumps(cand)}\nPlan: {summary}",
                         stage="implement", max_steps=12)
         s = subprocess.run([sys.executable, "run.py", "selftest"], cwd=ROOT, capture_output=True, text=True, timeout=600)
@@ -131,7 +134,8 @@ def improve(router, item):
         elif s.returncode:
             why = ["selftest failed: " + smoke.replace("\n", " ")]
         else:
-            state.kv_update("STATE.md", phase="compare")
+            state.task_phase(id_, "compare")
+    state.kv_update("STATE.md", phase="compare")
             after = sub_bench(probe)
             ok, why = judge(before, after, probe, crit)
             if state.on(crit.get("human_judge")):
