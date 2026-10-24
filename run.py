@@ -123,7 +123,7 @@ def main():
         loop.main_loop(Router())
     elif a.cmd == "demo":
         tmp = pathlib.Path(tempfile.mkdtemp()) / "selfagent"
-        shutil.copytree(ROOT, tmp, ignore=shutil.ignore_patterns(".git", ".cache", ".deps", "__pycache__", "notes", "STOP", ".env"))
+        shutil.copytree(ROOT, tmp, ignore=shutil.ignore_patterns(".git", ".cache", ".deps", "__pycache__", "notes", "STOP", ".env", ".selfagent"))
         env = {**os.environ, "AGENT_MOCK": "1"}
         for args in (["complain", "I cannot greet people with a custom tool"], ["once"], ["status"]):
             print("$ python run.py", *args)
