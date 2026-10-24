@@ -96,14 +96,14 @@ def improve(router, item):
     gitutil.ensure_clean()
     base = gitutil.ensure()
     branch = f"agent/{id_}"
-    state.backlog_set(id_, "~")
+    state.task_begin(id_, "research")
     state.kv_update("STATE.md", status="working", item=id_, task=text[:120], phase="research", updated=state.now())
     result = {"kept": False, "restart": False}
 
     cands = _candidates(router, kind, text)
     cand = _pick(router, cands, text)
-    (ROOT / "research").mkdir(exist_ok=True)
-    (ROOT / f"research/{id_}.md").write_text(f"# {text}\n\n```json\n{json.dumps(cands, indent=2)}\n```\n\nPicked: {cand.get('name')}\n",
+    (ROOT / ".selfagent" / "research").mkdir(parents=True, exist_ok=True)
+    (ROOT / f".selfagent/research/{id_}.md").write_text(f"# {text}\n\n```json\n{json.dumps(cands, indent=2)}\n```\n\nPicked: {cand.get('name')}\n",
                                              encoding="utf-8")
     state.kv_update("STATE.md", phase="plan")
     summary, probe = _plan(router, text, cand)
@@ -117,7 +117,7 @@ def improve(router, item):
         gitutil.git("checkout", "-b", branch)
         state.kv_update("STATE.md", phase="implement")
         agent.run_agent(router, IMPL_SYS, f"Weakness: {text}\nChosen tech: {json.dumps(cand)}\nPlan: {summary}",
-                        stage="implement", max_steps=25)
+                        stage="implement", max_steps=12)
         s = subprocess.run([sys.executable, "run.py", "selftest"], cwd=ROOT, capture_output=True, text=True, timeout=600)
         smoke = (s.stdout + s.stderr)[-400:]
         gitutil.commit_all(f"implement {id_}")
@@ -142,8 +142,15 @@ def improve(router, item):
                     state.log("JUDGEMENTS.md", f"- {state.now()} | {id_} | {'keep' if ok else 'drop'} | {text} | {cand.get('name')} | {why}")
                 except EOFError:
                     pass
+    except Exception as exc:
+        gitutil.git("checkout", base, check=False)
+        gitutil.git("branch", "-D", branch, check=False)
+        state.backlog_set(id_, "!", phase="failed", result=f"{type(exc).__name__}: {exc}")
+        raise
     finally:
-        gitutil.git("checkout", base)
+        current = gitutil.git("rev-parse", "--abbrev-ref", "HEAD", check=False)
+        if current and current != base:
+            gitutil.git("checkout", base, check=False)
 
     if ok:
         files = gitutil.changed_files(base, branch)
@@ -154,7 +161,7 @@ def improve(router, item):
     gitutil.git("branch", "-D", branch, check=False)
 
     verdict = "kept" if ok else "dropped"
-    state.backlog_set(id_, "x" if ok else "-")
+    state.backlog_set(id_, "x" if ok else "-", phase="done" if ok else "dropped", result="; ".join(why))
     delta = (f"bench {before['passed']}/{before['total']} {before['seconds']}s -> "
              f"{after['passed']}/{after['total']} {after['seconds']}s" if after else "n/a")
     state.log("TECH.md", f"- {state.now()} | {verdict} | {cand.get('name')} | for: {text[:80]} | {delta} | {'; '.join(why)}")
