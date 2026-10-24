@@ -14,7 +14,6 @@ def connect():
     con = sqlite3.connect(DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
     try:
-        con.execute("PRAGMA journal_mode=WAL")
         con.execute("PRAGMA busy_timeout=10000")
         con.executescript("""
             CREATE TABLE IF NOT EXISTS runtime_kv (
