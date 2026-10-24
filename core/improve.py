@@ -1,6 +1,6 @@
 """complaint / tech suggestion -> research -> plan(probe) -> branch -> implement -> compare -> keep|drop"""
 import json, re, subprocess, sys, time
-from core import state, gitutil, agent, bench
+from core import state, gitutil, agent
 from core.state import ROOT
 
 RESEARCH_SYS = ("You are the research module of a self-improving agent. Find 2-4 concrete, free, maintained "
@@ -32,14 +32,7 @@ def sub_bench(router, extra=None):
         task = {"id": "probe", "ok": ok, "seconds": seconds, "answer": answer[:200]}
         return {"passed": int(ok), "total": 1, "seconds": seconds, "tasks": [task],
                 "probe": ok, "probe_answer": task["answer"]}
-    cmd = [sys.executable, "run.py", "bench", "--json"]
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=600)
-    for line in reversed(r.stdout.strip().splitlines()):
-        try:
-            return json.loads(line)
-        except ValueError:
-            pass
-    raise RuntimeError("bench failed: " + (r.stderr or r.stdout)[-500:])
+
 
 
 def judge(before, after, probe, crit):
@@ -137,7 +130,7 @@ def improve(router, item):
         state.task_phase(id_, "implement")
         state.kv_update("STATE.md", phase="implement")
         agent.run_agent(router, IMPL_SYS, f"Weakness: {text}\nChosen tech: {json.dumps(cand)}\nPlan: {summary}",
-                        stage="implement", max_steps=12)
+                        stage="implement", max_steps=8)
         s = subprocess.run([sys.executable, "run.py", "selftest"], cwd=ROOT, capture_output=True, text=True, timeout=600)
         smoke = (s.stdout + s.stderr)[-400:]
         gitutil.commit_all(f"implement {id_}")
