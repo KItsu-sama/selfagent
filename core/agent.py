@@ -1,7 +1,7 @@
 """Minimal tool-calling loop for single tasks and persistent chat sessions."""
 import json
 import re
-from core import tools as T
+from core import tools as T, memory as M
 
 
 def parse_json(text):
@@ -19,7 +19,7 @@ def run_agent(router, system, task, stage="solve", max_steps=10):
     tools, docs = T.all_tools()
     tool_help = "\n".join(f"- {d}" for d in docs.values())
     head = [{"role": "system", "content":
-             f"[STAGE:{stage}]\n{system}\n\nTools:\n{tool_help}\n\n"
+             f"[STAGE:{stage}]\n{system}\n\n{M.context_for(task)}\n\nTools:\n{tool_help}\n\n"
              'Each turn reply with exactly ONE JSON object: {"tool": "<name>", "args": {...}} '
              'or, when finished, {"final": "<answer>"}.'},
             {"role": "user", "content": task}]
@@ -44,7 +44,7 @@ def run_agent(router, system, task, stage="solve", max_steps=10):
 
 
 # Deliberately exclude shell, pip_install, and third-party plugins from the GUI.
-CHAT_TOOL_NAMES = ("web_search", "fetch", "read_file", "write_file", "str_replace", "list_dir")
+CHAT_TOOL_NAMES = ("web_search", "fetch", "read_file", "write_file", "str_replace", "list_dir", "remember", "search_memory", "forget_memory")
 
 
 def run_chat_agent(router, messages, system=None, stage="chat", max_steps=8, on_tool=None):
