@@ -17,8 +17,10 @@ def project():
 
 
 def sub_bench(router, extra=None):
-    # Prefer a single focused acceptance probe over replaying the entire LLM benchmark
-    # before and after every change. This substantially reduces API calls.
+    # Use one focused acceptance probe rather than replaying every LLM benchmark task.
+    # If planning failed to produce a valid probe, judge() rejects the task without extra calls.
+    if not extra:
+        return {"passed": 0, "total": 0, "seconds": 0.0, "tasks": [], "probe": None}
     if extra:
         started = time.time()
         answer = agent.run_agent(
@@ -41,6 +43,8 @@ def sub_bench(router, extra=None):
 
 
 def judge(before, after, probe, crit):
+    if not probe:
+        return False, ["plan did not provide a valid acceptance probe; refusing an unverified change"]
     why, ok = [], True
     if probe and before.get("probe"):
         return False, ["probe already passed before the change: nothing to improve"]
