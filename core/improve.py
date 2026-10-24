@@ -16,13 +16,13 @@ def project():
     return (ROOT / "PROJECT.md").read_text(encoding="utf-8")[:2500]
 
 
-def sub_bench(extra=None):
+def sub_bench(router, extra=None):
     # Prefer a single focused acceptance probe over replaying the entire LLM benchmark
     # before and after every change. This substantially reduces API calls.
     if extra:
         started = time.time()
         answer = agent.run_agent(
-            RouterProxy.current, "You are a concise tool-using assistant.", extra["prompt"],
+            router, "You are a concise tool-using assistant.", extra["prompt"],
             stage="solve", max_steps=4
         )
         ok = bool(re.search(extra["expect"], answer))
@@ -123,7 +123,7 @@ def improve(router, item):
     summary, probe = _plan(router, text, cand)
     state.task_phase(id_, "baseline")
     state.kv_update("STATE.md", phase="baseline")
-    before = sub_bench(probe)
+    before = sub_bench(router, probe)
     gitutil.ensure_clean()
     head_before = gitutil.git("rev-parse", "HEAD")
 
@@ -149,7 +149,7 @@ def improve(router, item):
         else:
             state.task_phase(id_, "compare")
             state.kv_update("STATE.md", phase="compare")
-            after = sub_bench(probe)
+            after = sub_bench(router, probe)
             ok, why = judge(before, after, probe, crit)
             if state.on(crit.get("human_judge")):
                 print(f"\n[{id_}] {text}\nBEFORE: {before['passed']}/{before['total']} {before['seconds']}s probe={before.get('probe')}"
