@@ -51,11 +51,17 @@ def run_chat_agent(router, messages, system=None, stage="chat", max_steps=8, on_
     """Continue a multi-turn chat. The messages list is mutated to retain history.
 
     on_tool(name, args, result) is an optional UI callback. Only a small allowlist
-    of built-in tools is exposed; arbitrary shell commands and package installs are not.
+    of built-in tools is exposed; arbitrary shell commands, package installs, and
+    third-party plugin code are not loaded by this chat path.
     """
-    all_tools, all_docs = T.all_tools()
-    safe_tools = {name: all_tools[name] for name in CHAT_TOOL_NAMES if name in all_tools}
-    safe_docs = {name: all_docs[name] for name in safe_tools}
+    # Read only the explicitly allowlisted built-ins. Do not call all_tools(),
+    # because that also imports and executes every third-party plugin.
+    safe_tools = {
+        name: T.BUILTIN[name][0]
+        for name in CHAT_TOOL_NAMES
+        if name in T.BUILTIN
+    }
+    safe_docs = {name: T.BUILTIN[name][1] for name in safe_tools}
     tool_help = "\n".join(f"- {desc}" for desc in safe_docs.values())
     system_text = system or (
         "You are a helpful desktop assistant. Answer normally when no tool is needed. "
