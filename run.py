@@ -69,7 +69,7 @@ def main():
                 py_compile.compile(str(f), doraise=True)
             except Exception as e:
                 print("FAIL compile", f.name, e); bad += 1
-        for m in ("state", "gitutil", "tools", "agent", "bench", "improve", "loop", "router"):
+        for m in ("storage", "memory", "state", "gitutil", "tools", "agent", "bench", "improve", "loop", "router"):
             try:
                 importlib.import_module("core." + m)
             except Exception as e:
