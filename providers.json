@@ -1,0 +1,10 @@
+{
+  "_note": "All OpenAI-compatible. Free-tier model names change often: CHECK each provider's current free model list and edit 'models'. Providers without an API key set are skipped.",
+  "providers": [
+    {"name": "groq",       "base_url": "https://api.groq.com/openai/v1",                           "key_env": "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",       "models": ["llama-3.3-70b-versatile"]},
+    {"name": "gemini",     "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",  "key_env": "GEMINI_API_KEY",     "models": ["gemini-2.0-flash"]},
+    {"name": "cerebras",   "base_url": "https://api.cerebras.ai/v1",                               "key_env": "CEREBRAS_API_KEY",   "models": ["llama-3.3-70b"]},
+    {"name": "openrouter", "base_url": "https://openrouter.ai/api/v1",                             "key_env": "OPENROUTER_API_KEY", "models": ["meta-llama/llama-3.3-70b-instruct:free"]},
+    {"name": "mistral",    "base_url": "https://api.mistral.ai/v1",                                "key_env": "MISTRAL_API_KEY",    "models": ["mistral-small-latest"]}
+  ]
+}

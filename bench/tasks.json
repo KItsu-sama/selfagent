@@ -1,0 +1,7 @@
+[
+  {"id": "math",   "prompt": "What is 17*23? Reply with only the number.", "expect": "\\b391\\b"},
+  {"id": "files",  "prompt": "Use the list_dir tool on '.' and tell me whether run.py exists. Answer yes or no.", "expect": "(?i)yes"},
+  {"id": "shell",  "prompt": "Use the shell tool to run `git --version` and report the output.", "expect": "(?i)git version"},
+  {"id": "search", "prompt": "Use web_search to find the capital of France. Answer in one word.", "expect": "(?i)paris"},
+  {"id": "write",  "prompt": "Write a file notes/bench.txt containing the word ok, read it back, and reply with its content.", "expect": "(?i)\\bok\\b"}
+]
