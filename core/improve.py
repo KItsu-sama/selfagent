@@ -118,6 +118,13 @@ def improve(router, item):
     state.task_phase(id_, "plan")
     state.kv_update("STATE.md", phase="plan")
     summary, probe = _plan(router, text, cand)
+    if not probe:
+        reason = "plan did not provide a valid acceptance probe; refusing an unverified change"
+        state.backlog_set(id_, "-", phase="rejected", result=reason)
+        state.log("LESSONS.md", f"- {state.now()} | {id_} | rejected before implementation | {reason}")
+        state.kv_update("STATE.md", status="idle", phase="-", last=f"{id_} rejected: {reason}"[:200], updated=state.now())
+        gitutil.commit_all(f"result {id_} rejected")
+        return {"kept": False, "restart": False, "verdict": "dropped", "why": [reason], "tech": cand.get("name")}
     state.task_phase(id_, "baseline")
     state.kv_update("STATE.md", phase="baseline")
     before = sub_bench(router, probe)
