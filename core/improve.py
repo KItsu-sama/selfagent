@@ -93,6 +93,7 @@ def _plan(router, text, cand):
 def improve(router, item):
     id_, kind, text = item["id"], item["kind"], item["text"]
     crit = state.criteria()
+    gitutil.ensure_clean()
     base = gitutil.ensure()
     branch = f"agent/{id_}"
     state.backlog_set(id_, "~")
@@ -108,7 +109,7 @@ def improve(router, item):
     summary, probe = _plan(router, text, cand)
     state.kv_update("STATE.md", phase="baseline")
     before = sub_bench(probe)
-    gitutil.commit_all(f"pre {id_}")
+    gitutil.ensure_clean()
     head_before = gitutil.git("rev-parse", "HEAD")
 
     ok, why, after, smoke = False, [], None, ""
@@ -142,7 +143,7 @@ def improve(router, item):
                 except EOFError:
                     pass
     finally:
-        gitutil.git("checkout", "-f", base)
+        gitutil.git("checkout", base)
 
     if ok:
         files = gitutil.changed_files(base, branch)

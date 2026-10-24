@@ -72,7 +72,23 @@ def backlog_set(id_, status):
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def next_open():
-    open_ = [i for i in backlog_items() if i["status"] == " "]
-    open_.sort(key=lambda i: i["kind"] == "self")  # owner requests before self-notes
-    return open_[0] if open_ else None
+def next_open(max_retries=3):
+    state_data = kv_read("STATE.md")
+    candidates = []
+
+    for item in backlog_items():
+        status = item["status"]
+
+        if status == " ":
+            candidates.append(item)
+        elif status == "!":
+            try:
+                attempts = int(state_data.get(f"retry_{item['id']}", "0"))
+            except ValueError:
+                attempts = max_retries
+
+            if attempts < max_retries:
+                candidates.append(item)
+
+    candidates.sort(key=lambda item: item["kind"] == "self")
+    return candidates[0] if candidates else None

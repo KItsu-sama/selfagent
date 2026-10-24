@@ -27,6 +27,15 @@ def ensure():
         br = "main"
     return br
 
+def ensure_clean():
+    """Refuse autonomous work if the repository already contains local changes."""
+    status = git("status", "--porcelain")
+    if status:
+        preview = "\n".join(status.splitlines()[:12])
+        raise RuntimeError(
+            "Repository has local changes. Refusing autonomous upgrade "
+            "to protect user work:\n" + preview
+        )
 
 def changed_files(a, b):
     return [x for x in git("diff", "--name-only", f"{a}..{b}").splitlines() if x]

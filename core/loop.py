@@ -35,8 +35,5 @@ def main_loop(router):
             state.kv_update("STATE.md", status="error", error=str(e)[:200], updated=state.now())
             if item:
                 state.backlog_set(item["id"], "!")
-            try:
-                gitutil.git("checkout", "-f", "main", check=False)
-            except Exception:
-                pass
+
         sleep_checking_stop(int(crit.get("interval_seconds", 30)))
