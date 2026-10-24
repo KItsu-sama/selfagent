@@ -62,11 +62,13 @@ def backlog_items():
         return out
     with storage.connect() as con:
         saved = {row["id"]: dict(row) for row in con.execute("SELECT * FROM tasks")}
+    seen = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         match = ITEM.match(line)
         if not match:
             continue
         status, task_id, kind, text = match.groups()
+        seen.add(task_id)
         item = {"status": status, "id": task_id, "kind": kind, "text": text}
         runtime = saved.get(task_id)
         if runtime:
@@ -75,17 +77,23 @@ def backlog_items():
         else:
             item.update(attempts=0, phase="", result="")
         out.append(item)
+    for task_id, runtime in saved.items():
+        if task_id not in seen and runtime.get("text"):
+            out.append({
+                "status": runtime["status"], "id": task_id, "kind": runtime["kind"],
+                "text": runtime["text"], "attempts": runtime["attempts"],
+                "phase": runtime["phase"], "result": runtime["result"],
+            })
     return out
 
 
 def backlog_add(text, kind="complaint"):
     task_id = secrets.token_hex(3)
     safe_text = str(text).replace("\n", " ").strip()
-    log("BACKLOG.md", f"- [ ] id={task_id} | kind={kind} | {safe_text}")
     with storage.connect() as con:
         con.execute(
-            "INSERT OR REPLACE INTO tasks(id,status,attempts,phase,result,updated_at) VALUES(?,?,?,?,?,?)",
-            (task_id, " ", 0, "queued", "", now()),
+            "INSERT OR REPLACE INTO tasks(id,status,attempts,phase,result,updated_at,kind,text) VALUES(?,?,?,?,?,?,?,?)",
+            (task_id, " ", 0, "queued", "", now(), kind, safe_text),
         )
         con.execute(
             "INSERT INTO events(created_at,task_id,phase,event,detail) VALUES(?,?,?,?,?)",
