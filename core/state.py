@@ -7,7 +7,7 @@ from core import storage
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 KV = re.compile(r"^- (\w+):\s*(.*)$")
-ITEM = re.compile(r"^\\s*- \\[(.)\\] id=([\\w-]+) \\| kind=([\\w-]+) \\| (.*)$")
+ITEM = re.compile(r"^\s*-\s+\[(.)\] id=([\w-]+) \| kind=([\w-]+) \| (.*)$")
 
 
 def now():
