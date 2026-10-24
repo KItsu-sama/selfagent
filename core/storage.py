@@ -23,7 +23,8 @@ def connect():
             CREATE TABLE IF NOT EXISTS tasks (
                 id TEXT PRIMARY KEY, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
                 phase TEXT NOT NULL DEFAULT '', result TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT ''
+                updated_at TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT '',
+                text TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS memories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, memory_key TEXT NOT NULL UNIQUE,
@@ -36,6 +37,11 @@ def connect():
                 event TEXT NOT NULL, detail TEXT NOT NULL DEFAULT ''
             );
         """)
+        task_columns = {row["name"] for row in con.execute("PRAGMA table_info(tasks)")}
+        if "kind" not in task_columns:
+            con.execute("ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
+        if "text" not in task_columns:
+            con.execute("ALTER TABLE tasks ADD COLUMN text TEXT NOT NULL DEFAULT ''")
         yield con
         con.commit()
     finally:
