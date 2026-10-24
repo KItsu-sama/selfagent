@@ -38,8 +38,9 @@ def main():
     sub.add_parser("reflect", help="bench now; failures become backlog notes")
     sub.add_parser("status"); sub.add_parser("stop"); sub.add_parser("resume")
     sp = sub.add_parser("memory", help="inspect or manage local persistent memory")
-    sp.add_argument("action", choices=("list", "search", "forget"))
+    sp.add_argument("action", choices=("list", "search", "forget", "save"))
     sp.add_argument("value", nargs="?")
+    sp.add_argument("content", nargs="?")
     sub.add_parser("demo", help="offline end-to-end test with a fake LLM in a temp copy")
     a = ap.parse_args()
 
@@ -103,7 +104,11 @@ def main():
                 if q:
                     print(agent.run_agent(r, SYS, q))
     elif a.cmd == "memory":
-        if a.action == "list":
+        if a.action == "save":
+            if not a.value or not a.content:
+                ap.error("memory save requires a key and content")
+            print(memory.remember(a.value, a.content))
+        elif a.action == "list":
             rows = memory.search("", limit=10)
             print("\n".join(f"- {m['memory_key']}: {m['content']}" for m in rows) or "No saved memories.")
         elif a.action == "search":
