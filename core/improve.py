@@ -1,5 +1,5 @@
 """complaint / tech suggestion -> research -> plan(probe) -> branch -> implement -> compare -> keep|drop"""
-import json, re, subprocess, sys
+import json, re, subprocess, sys, time
 from core import state, gitutil, agent, bench
 from core.state import ROOT
 
@@ -17,8 +17,21 @@ def project():
 
 
 def sub_bench(extra=None):
-    cmd = [sys.executable, "run.py", "bench", "--json"] + (["--extra", json.dumps(extra)] if extra else [])
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=3600)
+    # Prefer a single focused acceptance probe over replaying the entire LLM benchmark
+    # before and after every change. This substantially reduces API calls.
+    if extra:
+        started = time.time()
+        answer = agent.run_agent(
+            RouterProxy.current, "You are a concise tool-using assistant.", extra["prompt"],
+            stage="solve", max_steps=4
+        )
+        ok = bool(re.search(extra["expect"], answer))
+        seconds = round(time.time() - started, 2)
+        task = {"id": "probe", "ok": ok, "seconds": seconds, "answer": answer[:200]}
+        return {"passed": int(ok), "total": 1, "seconds": seconds, "tasks": [task],
+                "probe": ok, "probe_answer": task["answer"]}
+    cmd = [sys.executable, "run.py", "bench", "--json"]
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=600)
     for line in reversed(r.stdout.strip().splitlines()):
         try:
             return json.loads(line)
