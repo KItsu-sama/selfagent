@@ -141,7 +141,15 @@ def task_phase(task_id, phase, detail=""):
 
 def recover_interrupted():
     """Make tasks left in progress by a crash retryable instead of stuck forever."""
+    # Migrate old Markdown-only in-progress entries as well as SQLite-backed tasks.
+    legacy = [item["id"] for item in backlog_items() if item["status"] == "~" and item.get("attempts", 0) == 0]
     with storage.connect() as con:
+        for task_id in legacy:
+            con.execute(
+                "INSERT INTO tasks(id,status,attempts,phase,result,updated_at) VALUES(?,?,?,?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET status='!', phase='interrupted', updated_at=excluded.updated_at",
+                (task_id, "!", 0, "interrupted", "Recovered legacy in-progress task.", now()),
+            )
         rows = con.execute("SELECT id FROM tasks WHERE status='~'").fetchall()
         for row in rows:
             con.execute(
