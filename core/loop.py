@@ -40,4 +40,4 @@ def main_loop(router):
             if item:
                 state.backlog_set(item["id"], "!", phase="failed", result=str(e)[:500])
 
-        sleep_checking_stop(max(60, int(crit.get("interval_seconds", 30))))
+        sleep_checking_stop(max(300, int(crit.get("interval_seconds", 30))))
