@@ -118,7 +118,7 @@ def improve(router, item):
     try:
         gitutil.git("checkout", "-b", branch)
         state.task_phase(id_, "implement")
-    state.kv_update("STATE.md", phase="implement")
+        state.kv_update("STATE.md", phase="implement")
         agent.run_agent(router, IMPL_SYS, f"Weakness: {text}\nChosen tech: {json.dumps(cand)}\nPlan: {summary}",
                         stage="implement", max_steps=12)
         s = subprocess.run([sys.executable, "run.py", "selftest"], cwd=ROOT, capture_output=True, text=True, timeout=600)
@@ -135,7 +135,7 @@ def improve(router, item):
             why = ["selftest failed: " + smoke.replace("\n", " ")]
         else:
             state.task_phase(id_, "compare")
-    state.kv_update("STATE.md", phase="compare")
+            state.kv_update("STATE.md", phase="compare")
             after = sub_bench(probe)
             ok, why = judge(before, after, probe, crit)
             if state.on(crit.get("human_judge")):
