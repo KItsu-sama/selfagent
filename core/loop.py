@@ -14,7 +14,7 @@ def main_loop(router):
     recovered = state.recover_interrupted()
     if recovered:
         print(f"recovered {recovered} interrupted task(s)")
-    print("agent loop started (touch STOP or \`python run.py stop\` to halt)")
+        print("agent loop started (touch STOP or run `python run.py stop` to halt)")
     while True:
         if (ROOT / "STOP").exists():
             print("STOP file found, exiting")
