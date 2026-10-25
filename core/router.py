@@ -164,6 +164,8 @@ class Router:
         errors = []
         # Each candidate receives the exact same message history. A provider switch never resets context.
         for _, provider, model, provider_key, api_key in candidates:
+            if self._h(f'provider:{provider["name"]}').get("cool_until", 0) > time.time():
+                continue
             health, started = self._h(provider_key), time.time()
             try:
                 answer = self._call(provider, model, messages, api_key)
