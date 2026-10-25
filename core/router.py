@@ -109,7 +109,8 @@ class Router:
             for m in p.get("models", []):
                 k = f'{p["name"]}/{m}'
                 h = self._h(k)
-                if h.get("cool_until", 0) > now:
+                provider_health = self._h(f'provider:{p["name"]}')
+                if h.get("cool_until", 0) > now or provider_health.get("cool_until", 0) > now:
                     continue
                 score = (h.get("ok", 0) + 1) / (h.get("ok", 0) + h.get("fail", 0) + 2)
                 score += random.random() * 0.05
@@ -180,8 +181,19 @@ class Router:
                 return answer
             except Exception as exc:
                 health["fail"] = health.get("fail", 0) + 1
-                health["cool_until"] = time.time() + _cooldown_seconds(exc)
+                cooldown_until = time.time() + _cooldown_seconds(exc)
+                health["cool_until"] = cooldown_until
                 health["last_error"] = str(exc)[:800]
+                detail = str(exc).lower()
+                if isinstance(exc, ProviderHTTPError) and (
+                    exc.status == 429 or any(word in detail for word in (
+                        "quota", "resource exhausted", "billing", "credits exhausted"
+                    ))
+                ):
+                    # Quota/rate limits often apply to the whole provider key, not one model.
+                    provider_health = self._h(f'provider:{provider["name"]}')
+                    provider_health["cool_until"] = cooldown_until
+                    provider_health["last_error"] = str(exc)[:800]
                 self._save()
                 errors.append(f"{provider_key}: {exc}")
         raise RuntimeError(
