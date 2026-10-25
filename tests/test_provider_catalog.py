@@ -10,18 +10,18 @@ SAMPLE = """# Free APIs
 ### Example Provider
 Permanent free tier.
 
-Base URL: \`https://api.example.test/v1\`
+Base URL: \x60https://api.example.test/v1\x60
 
 | Model Name | Context | Rate |
 | --- | --- | --- |
-| \`example/model-a\` | 32K | free |
+| \x60example/model-a\x60 | 32K | free |
 | Plain Model B | 8K | free |
 | + 5 more models | Varies | Varies |
 
 ### Inference providers
 
 ### Google Gemini
-Base URL: \`https://generativelanguage.googleapis.com/v1beta\`
+Base URL: \x60https://generativelanguage.googleapis.com/v1beta\x60
 
 | Model Name | Context |
 | --- | --- |
