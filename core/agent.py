@@ -14,33 +14,85 @@ def parse_json(text):
     return None
 
 
-def run_agent(router, system, task, stage="solve", max_steps=10):
-    """Run one isolated task. Kept compatible with the original CLI/loop."""
+def run_agent(router, system, task, stage="solve", max_steps=10, resume_id=None):
+    """Run a task with provider failover and a local checkpoint for later resume."""
+    from core import task_session
+
     tools, docs = T.all_tools()
     tool_help = "\n".join(f"- {d}" for d in docs.values())
-    head = [{"role": "system", "content":
-             f"[STAGE:{stage}]\n{system}\n\n{M.context_for(task)}\n\nTools:\n{tool_help}\n\n"
-             'Each turn reply with exactly ONE JSON object: {"tool": "<name>", "args": {...}} '
-             'or, when finished, {"final": "<answer>"}.'},
-            {"role": "user", "content": task}]
-    tail = []
-    for _ in range(max_steps):
-        out = router.chat(head + tail[-8:], stage=stage, cache=False)
+
+    if resume_id:
+        snapshot = task_session.load(resume_id)
+        head = snapshot["head"]
+        tail = snapshot.get("tail", [])
+        task = snapshot.get("task", task)
+        stage = snapshot.get("stage", stage)
+        # Every resume grants a fresh bounded batch of steps while retaining the old history.
+        max_steps = int(snapshot.get("max_steps", max_steps)) + 10
+        start_step = int(snapshot.get("step", 0))
+        session_id = resume_id
+    else:
+        head = [{
+            "role": "system",
+            "content": (
+                f"[STAGE:{stage}]\n{system}\n\n{M.context_for(task)}\n\nTools:\n{tool_help}\n\n"
+                'Each turn reply with exactly ONE JSON object: {"tool": "<name>", "args": {...}} '
+                'or, when finished, {"final": "<answer>"}.'
+            ),
+        }, {"role": "user", "content": task}]
+        tail = []
+        start_step = 0
+        session_id = None
+
+    def checkpoint(next_step):
+        nonlocal session_id
+        snapshot = {
+            "task": task, "stage": stage, "max_steps": max_steps,
+            "head": head, "tail": tail, "step": next_step,
+        }
+        session_id = task_session.save(snapshot, session_id)
+        return session_id
+
+    for step in range(start_step, max_steps):
+        # Save before each network call so an interrupted run can be listed and resumed.
+        checkpoint(step)
+        try:
+            out = router.chat(head + tail[-8:], stage=stage, cache=False)
+        except Exception as exc:
+            checkpoint(step)
+            return (
+                f"Task paused because no configured provider completed the request. "
+                f"Context saved locally as task ID {session_id}.\n"
+                f"Reason: {exc}\n"
+                f"After fixing/adding a provider or waiting for quota reset, run: "
+                f"python run.py resume-task {session_id}"
+            )
+
         obj = parse_json(out)
         if not isinstance(obj, dict):
-            tail += [{"role": "assistant", "content": out},
-                     {"role": "user", "content": "Invalid. Reply with ONE JSON object."}]
+            tail += [
+                {"role": "assistant", "content": out},
+                {"role": "user", "content": "Invalid. Reply with ONE JSON object."},
+            ]
+            checkpoint(step + 1)
             continue
         if "final" in obj:
-            f = obj["final"]
-            return f if isinstance(f, str) else json.dumps(f)
+            answer = obj["final"]
+            task_session.complete(session_id) if session_id else None
+            return answer if isinstance(answer, str) else json.dumps(answer, ensure_ascii=False)
+
         try:
-            res = tools[obj.get("tool")](**(obj.get("args") or {}))
-        except Exception as e:
-            res = f"ERROR: {type(e).__name__}: {e}"
-        tail += [{"role": "assistant", "content": out},
-                 {"role": "user", "content": "RESULT:\n" + str(res)[:4000]}]
-    return "(max steps reached)"
+            result = tools[obj.get("tool")](**(obj.get("args") or {}))
+        except Exception as exc:
+            result = f"ERROR: {type(exc).__name__}: {exc}"
+        tail += [
+            {"role": "assistant", "content": out},
+            {"role": "user", "content": "RESULT:\n" + str(result)[:4000]},
+        ]
+        checkpoint(step + 1)
+
+    checkpoint(max_steps)
+    return f"Task paused at the step limit. Context saved as {session_id}; resume with: python run.py resume-task {session_id}"
 
 
 # Deliberately exclude shell, pip_install, and third-party plugins from the GUI.
