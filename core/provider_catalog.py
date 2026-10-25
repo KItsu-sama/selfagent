@@ -43,7 +43,7 @@ def parse_catalog(markdown):
 
         base = re.match(r"^Base URL:\s*(\S+)", line, flags=re.IGNORECASE)
         if base:
-            current["base_url"] = base.group(1).strip().rstrip("/")
+            current["base_url"] = base.group(1).strip(chr(96)).rstrip("/")
             continue
 
         if re.search(r"\|\s*Model Name\s*\|", line, flags=re.IGNORECASE):
