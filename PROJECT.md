@@ -5,6 +5,7 @@ integrates the tech as a plugin on a git branch, compares before/after, and keep
 
 ## Architecture
 - core/router.py   free-API router: fallback, health, cooldown, cache
+- core/provider_catalog.py   replaceable upstream catalog adapter; never fetches at import time
 - core/storage.py  local SQLite runtime/task database (ignored by Git)
 - core/memory.py   explicit persistent memory + lightweight keyword retrieval
 - core/tools.py    built-in tools + plugin loader
@@ -19,4 +20,5 @@ integrates the tech as a plugin on a git branch, compares before/after, and keep
 - One small change per branch. Every change is revertable (git).
 - BACKLOG.md is the portable intake queue; newly queued tasks and runtime status live in `.selfagent/data.sqlite3` to avoid dirtying the working tree.
 - Memory is local and explicit: use `remember`, `search_memory`, and `forget_memory`; never store secrets.
+- Provider discovery is explicit: `python run.py providers pull` refreshes a local catalog; `providers enable` adds one selected model to ignored local `providers.json`. The router interface stays unchanged, and provider keys remain in `.env`.
 - Task failures are retried at most three times. The loop pauses between tasks and waits five minutes after errors.
