@@ -11,7 +11,10 @@ def sleep_checking_stop(secs):
 
 
 def main_loop(router):
-    print("agent loop started (touch STOP or `python run.py stop` to halt)")
+    recovered = state.recover_interrupted()
+    if recovered:
+        print(f"recovered {recovered} interrupted task(s)")
+        print("agent loop started (touch STOP or run `python run.py stop` to halt)")
     while True:
         if (ROOT / "STOP").exists():
             print("STOP file found, exiting")
@@ -27,6 +30,7 @@ def main_loop(router):
                 if res.get("restart"):
                     print("  core changed, restarting with new code")
                     os.execv(sys.executable, [sys.executable] + sys.argv)
+                sleep_checking_stop(max(1, int(crit.get("interval_seconds", 30))))
                 continue
             if state.on(crit.get("auto_reflect")):
                 improve.reflect(router)
@@ -34,6 +38,6 @@ def main_loop(router):
             print("  ERROR:", e)
             state.kv_update("STATE.md", status="error", error=str(e)[:200], updated=state.now())
             if item:
-                state.backlog_set(item["id"], "!")
+                state.backlog_set(item["id"], "!", phase="failed", result=str(e)[:500])
 
-        sleep_checking_stop(int(crit.get("interval_seconds", 30)))
+        sleep_checking_stop(max(300, int(crit.get("interval_seconds", 30))))

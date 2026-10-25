@@ -6,3 +6,4 @@ STOP
 .env
 notes/
 providers.json
+.selfagent/

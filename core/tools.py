@@ -1,6 +1,6 @@
 """Built-in tools + plugin loader. NOTE: shell/pip run on your machine: use a VM/container for real 24/7."""
 import subprocess, sys, re, html, importlib.util, urllib.request, urllib.parse
-from core import state
+from core import state, memory
 from core.state import ROOT
 
 DEPS = ROOT / ".deps"
@@ -96,6 +96,27 @@ def pip_install(package):
     return f"exit={r.returncode}\n{(r.stdout + r.stderr)[-1500:]}"
 
 
+def remember(key, content, tags=""):
+    """remember(key, content, tags='') - explicitly save a durable fact or project note locally"""
+    return memory.remember(key, content, tags)
+
+
+def search_memory(query="", limit=5):
+    """search_memory(query, limit=5) - retrieve relevant saved local memories"""
+    matches = memory.search(query, limit)
+    if not matches:
+        return "No matching saved memories."
+    return "\n".join(
+        f"- {m['memory_key']}: {m['content']}" + (f" [tags: {m['tags']}]" if m["tags"] else "")
+        for m in matches
+    )
+
+
+def forget_memory(key):
+    """forget_memory(key) - delete a saved memory by its exact key"""
+    return memory.forget(key)
+
+
 BUILTIN = {
     "web_search": (web_search, "web_search(query) - search the web, returns titles+links"),
     "fetch": (fetch, "fetch(url) - page text (first 6000 chars)"),
@@ -104,6 +125,9 @@ BUILTIN = {
     "write_file": (write_file, "write_file(path, content) - create/overwrite a file"),
     "str_replace": (str_replace, "str_replace(path, old, new) - change one exact, unique piece of a file (prefer over write_file for edits)"),
     "list_dir": (list_dir, "list_dir(path='.')"),
+    "remember": (remember, "remember(key, content, tags='') - save a durable memory"),
+    "search_memory": (search_memory, "search_memory(query, limit=5) - retrieve saved memories"),
+    "forget_memory": (forget_memory, "forget_memory(key) - delete a saved memory by exact key"),
     "pip_install": (pip_install, "pip_install(package) - install into .deps/"),
 }
 

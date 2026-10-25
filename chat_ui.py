@@ -30,6 +30,7 @@ SYSTEM = (
     "You are a helpful desktop AI assistant. Chat naturally and concisely. "
     "Use tools when useful. File tools operate inside the selfagent project folder only. "
     "Ask before overwriting important existing files if the request is ambiguous. "
+    "Use search_memory when saved context may help. Use remember only for durable facts the user explicitly asks to retain; never save secrets. "
     "Never say an action succeeded unless its tool result confirms it."
 )
 
