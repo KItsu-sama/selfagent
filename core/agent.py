@@ -27,7 +27,8 @@ def run_agent(router, system, task, stage="solve", max_steps=10, resume_id=None)
         tail = snapshot.get("tail", [])
         task = snapshot.get("task", task)
         stage = snapshot.get("stage", stage)
-        max_steps = snapshot.get("max_steps", max_steps)
+        # Every resume grants a fresh bounded batch of steps while retaining the old history.
+        max_steps = int(snapshot.get("max_steps", max_steps)) + 10
         start_step = int(snapshot.get("step", 0))
         session_id = resume_id
     else:
