@@ -36,7 +36,7 @@ def run_agent(router, system, task, stage="solve", max_steps=10, resume_id=None)
             "content": (
                 f"[STAGE:{stage}]\n{system}\n\n{M.context_for(task)}\n\nTools:\n{tool_help}\n\n"
                 'Each turn reply with exactly ONE JSON object: {"tool": "<name>", "args": {...}} '
-                'or, when finished, {"final": "<answer>"}.''
+                'or, when finished, {"final": "<answer>"}.'
             ),
         }, {"role": "user", "content": task}]
         tail = []
