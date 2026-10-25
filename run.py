@@ -37,6 +37,9 @@ def main():
     sub.add_parser("selftest", help="run every plugin's selftest")
     sub.add_parser("reflect", help="bench now; failures become backlog notes")
     sub.add_parser("status"); sub.add_parser("stop"); sub.add_parser("resume")
+    sp = sub.add_parser("resume-task", help="resume a task paused by provider/API failures")
+    sp.add_argument("session_id", help="task ID printed when the task was paused")
+    sub.add_parser("pending", help="list locally checkpointed tasks that can be resumed")
     sp = sub.add_parser("memory", help="inspect or manage local persistent memory")
     sp.add_argument("action", choices=("list", "search", "forget", "save"))
     sp.add_argument("value", nargs="?")
@@ -71,6 +74,17 @@ def main():
         (ROOT / "STOP").write_text("stop"); print("STOP written")
     elif a.cmd == "resume":
         (ROOT / "STOP").unlink(missing_ok=True); print("STOP removed")
+    elif a.cmd == "resume-task":
+        print(agent.run_agent(Router(), SYS, "", resume_id=a.session_id))
+    elif a.cmd == "pending":
+        from core import task_session
+        items = task_session.list_pending()
+        if not items:
+            print("No pending tasks.")
+        else:
+            for item in items:
+                prompt = item.get("task", "").replace("\\n", " ")
+                print(f"{item.get('session_id')} | step {item.get('step', 0)}/{item.get('max_steps', 0)} | {item.get('updated_at', '')} | {prompt[:100]}")
     elif a.cmd == "selftest":
         errs = []
         plugs = tools.load_plugins(errs)
