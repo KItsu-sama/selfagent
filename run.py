@@ -19,7 +19,7 @@ def load_env():
 
 
 load_env()
-from core import state, tools, agent, bench, improve, loop, gitutil, memory  # noqa: E402
+from core import state, tools, agent, bench, improve, loop, gitutil, memory, provider_catalog  # noqa: E402
 from core.router import Router  # noqa: E402
 
 SYS = "You are a capable agent living in a git repo you can improve. Use tools when needed. Be concise."
@@ -41,6 +41,17 @@ def main():
     sp.add_argument("action", choices=("list", "search", "forget", "save"))
     sp.add_argument("value", nargs="?")
     sp.add_argument("content", nargs="?")
+    providers = sub.add_parser("providers", help="pull and manage the replaceable free-provider catalog")
+    psub = providers.add_subparsers(dest="providers_action", required=True)
+    psub.add_parser("pull", help="download the upstream catalog into ignored local runtime data")
+    pl = psub.add_parser("list", help="list discovered providers and models")
+    pl.add_argument("--provider", help="filter by provider name")
+    pe = psub.add_parser("enable", help="add one catalog model to local providers.json")
+    pe.add_argument("name", help="provider name as shown by providers list")
+    pe.add_argument("--model", required=True, help="exact model name")
+    pe.add_argument("--key-env", required=True, help="environment variable holding the API key")
+    pd = psub.add_parser("remove", help="remove one provider from local providers.json")
+    pd.add_argument("name")
     sub.add_parser("demo", help="offline end-to-end test with a fake LLM in a temp copy")
     a = ap.parse_args()
 
@@ -70,7 +81,7 @@ def main():
                 py_compile.compile(str(f), doraise=True)
             except Exception as e:
                 print("FAIL compile", f.name, e); bad += 1
-        for m in ("storage", "memory", "state", "gitutil", "tools", "agent", "bench", "improve", "loop", "router"):
+        for m in ("storage", "memory", "state", "gitutil", "tools", "agent", "bench", "improve", "loop", "router", "provider_catalog"):
             try:
                 importlib.import_module("core." + m)
             except Exception as e:
@@ -103,6 +114,20 @@ def main():
                     break
                 if q:
                     print(agent.run_agent(r, SYS, q))
+    elif a.cmd == "providers":
+        if a.providers_action == "pull":
+            catalog = provider_catalog.pull_catalog()
+            model_count = sum(len(p["models"]) for p in catalog["providers"])
+            print("Pulled {} providers / {} models from {}".format(
+                len(catalog["providers"]), model_count, catalog["source"]
+            ))
+            print("Catalog saved locally; active providers were not changed.")
+        elif a.providers_action == "list":
+            print(provider_catalog.list_catalog(a.provider))
+        elif a.providers_action == "enable":
+            print(provider_catalog.enable_provider(a.name, a.model, a.key_env))
+        else:
+            print(provider_catalog.disable_provider(a.name))
     elif a.cmd == "memory":
         if a.action == "save":
             if not a.value or not a.content:
