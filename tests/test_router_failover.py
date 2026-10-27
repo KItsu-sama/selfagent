@@ -1,5 +1,6 @@
 """Offline regression tests for API failover and cooldown classification."""
 import unittest
+import urllib.error
 from unittest.mock import Mock
 
 from core.router import (
@@ -90,9 +91,15 @@ class RouterFailoverTests(unittest.TestCase):
         self.assertIn("Provider B/model-b", str(caught.exception))
         self.assertEqual(router._call.call_count, 2)
 
-    def test_quota_and_auth_errors_get_longer_cooldowns(self):
+    def test_failure_classes_have_bounded_cooldowns(self):
         self.assertEqual(_cooldown_seconds(ProviderHTTPError(429, "rate limit")), 900)
         self.assertEqual(_cooldown_seconds(ProviderHTTPError(401, "invalid key")), 3600)
+        self.assertEqual(_cooldown_seconds(ProviderHTTPError(403, "forbidden")), 3600)
+        self.assertEqual(_cooldown_seconds(ProviderHTTPError(400, "invalid model")), 600)
+        self.assertEqual(_cooldown_seconds(ProviderHTTPError(503, "upstream down")), 60)
+        self.assertEqual(_cooldown_seconds(urllib.error.URLError("offline")), 45)
+        self.assertEqual(_cooldown_seconds(ProviderHTTPError(429, "busy", "7200")), 3600)
+        self.assertEqual(_cooldown_seconds(ProviderHTTPError(429, "busy", "30")), 30)
 
     def test_error_body_extracts_provider_message(self):
         self.assertEqual(
