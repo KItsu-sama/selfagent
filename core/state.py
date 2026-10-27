@@ -138,6 +138,19 @@ def task_begin(task_id, phase="starting"):
         )
 
 
+def task_requeue(task_id, reason):
+    """Put a task back in the queue without spending a retry (outage, dirty tree: not the task's fault)."""
+    with storage.connect() as con:
+        con.execute(
+            "UPDATE tasks SET status=' ', attempts=MAX(attempts-1,0), phase='waiting', result=?, updated_at=? WHERE id=?",
+            (str(reason)[:1000], now(), task_id),
+        )
+        con.execute(
+            "INSERT INTO events(created_at,task_id,phase,event,detail) VALUES(?,?,?,?,?)",
+            (now(), task_id, "waiting", "requeued", str(reason)[:500]),
+        )
+
+
 def task_phase(task_id, phase, detail=""):
     with storage.connect() as con:
         con.execute("UPDATE tasks SET phase=?, updated_at=? WHERE id=?", (phase, now(), task_id))

@@ -1,6 +1,7 @@
 """complaint / tech suggestion -> research -> plan(probe) -> branch -> implement -> compare -> keep|drop"""
-import json, re, subprocess, sys, time
-from core import state, gitutil, agent
+import json, re, subprocess, sys
+from core import state, gitutil, agent, bench, task_session
+from core.router import ProviderUnavailable
 from core.state import ROOT
 
 RESEARCH_SYS = ("You are the research module of a self-improving agent. Find 2-4 concrete, free, maintained "
@@ -16,23 +17,31 @@ def project():
     return (ROOT / "PROJECT.md").read_text(encoding="utf-8")[:2500]
 
 
-def sub_bench(router, extra=None):
-    # Use one focused acceptance probe rather than replaying every LLM benchmark task.
-    # If planning failed to produce a valid probe, judge() rejects the task without extra calls.
+def _int(crit, key, default):
+    try:
+        return int(crit.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def sub_bench(router, extra=None, full=False):
+    """Run the probe (and, with full=True, the fixed bench) in a FRESH process so that edits to core/
+    are actually exercised; the in-process modules are still the old code. `router` is kept for
+    backwards compatibility and unused."""
     if not extra:
         return {"passed": 0, "total": 0, "seconds": 0.0, "tasks": [], "probe": None}
-    if extra:
-        started = time.time()
-        answer = agent.run_agent(
-            router, "You are a concise tool-using assistant.", extra["prompt"],
-            stage="solve", max_steps=4
-        )
-        ok = bool(re.search(extra["expect"], answer))
-        seconds = round(time.time() - started, 2)
-        task = {"id": "probe", "ok": ok, "seconds": seconds, "answer": answer[:200]}
-        return {"passed": int(ok), "total": 1, "seconds": seconds, "tasks": [task],
-                "probe": ok, "probe_answer": task["answer"]}
-
+    cmd = [sys.executable, "-m", "core.probe_cli", "--probe", json.dumps(extra)] + (["--full"] if full else [])
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=3600, stdin=subprocess.DEVNULL)
+    for line in reversed(r.stdout.strip().splitlines()):
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            if data.get("paused"):
+                raise agent.TaskPaused(None, data.get("reason", "provider unavailable"), data.get("kind", "provider"))
+            return data
+    raise RuntimeError("probe subprocess failed: " + (r.stderr or r.stdout)[-500:])
 
 
 def judge(before, after, probe, crit):
@@ -56,6 +65,8 @@ def judge(before, after, probe, crit):
             why.append(f"slower {b}s -> {a}s")
     if ok:
         why.append("probe went fail->pass" if flipped else "no regression")
+        if str(crit.get("bench_mode", "probe")).lower() != "full":
+            why.append("probe-only mode: regression/speed checks are inactive (bench_mode: full enables them)")
     return ok, why
 
 
@@ -63,7 +74,7 @@ def _candidates(router, kind, text):
     if kind == "tech":
         return [{"name": text, "why": "suggested by owner", "how": "integrate as plugin", "source": ""}]
     raw = agent.run_agent(router, RESEARCH_SYS, f"Reported weakness: {text}\n\nProject:\n{project()}",
-                          stage="research", max_steps=10)
+                          stage="research", max_steps=10, on_pause="raise")
     lst = agent.parse_json(raw)
     if isinstance(lst, list) and lst and all(isinstance(x, dict) for x in lst):
         return lst[:4]
@@ -101,12 +112,38 @@ def _plan(router, text, cand):
 
 
 def improve(router, item):
+    """Run one backlog item. Outages and a dirty tree re-queue it (no retry spent); real failures mark it '!'."""
+    id_ = item["id"]
+    state.task_begin(id_, "starting")
+    try:
+        return _improve(router, item)
+    except (agent.TaskPaused, ProviderUnavailable) as exc:
+        if getattr(exc, "session_id", None):
+            task_session.complete(exc.session_id)
+        if isinstance(exc, ProviderUnavailable) or exc.kind == "provider":
+            reason = f"waiting for a provider: {exc}"[:500]
+            state.task_requeue(id_, reason)
+            state.kv_update("STATE.md", status="idle", phase="waiting", last=f"{id_} waiting: {exc}"[:200], updated=state.now())
+            return {"kept": False, "restart": False, "verdict": "paused", "why": [reason]}
+        state.backlog_set(id_, "!", phase="failed", result=str(exc)[:500])
+        raise
+    except gitutil.DirtyTree as exc:
+        state.task_requeue(id_, str(exc).splitlines()[0])
+        state.kv_update("STATE.md", status="idle", phase="blocked", last=f"{id_} blocked: uncommitted changes", updated=state.now())
+        return {"kept": False, "restart": False, "verdict": "blocked", "why": [str(exc)]}
+    except Exception as exc:
+        state.backlog_set(id_, "!", phase="failed", result=f"{type(exc).__name__}: {exc}"[:500])
+        raise
+
+
+def _improve(router, item):
     id_, kind, text = item["id"], item["kind"], item["text"]
     crit = state.criteria()
-    gitutil.ensure_clean()
-    base = gitutil.ensure()
+    full = str(crit.get("bench_mode", "probe")).lower() == "full"
+    base = gitutil.ensure()        # first recover from a crashed run's leftover branch...
+    gitutil.ensure_clean()         # ...then refuse to touch the owner's uncommitted work
     branch = f"agent/{id_}"
-    state.task_begin(id_, "research")
+    state.task_phase(id_, "research")
     state.kv_update("STATE.md", status="working", item=id_, task=text[:120], phase="research", updated=state.now())
     result = {"kept": False, "restart": False}
 
@@ -127,7 +164,7 @@ def improve(router, item):
         return {"kept": False, "restart": False, "verdict": "dropped", "why": [reason], "tech": cand.get("name")}
     state.task_phase(id_, "baseline")
     state.kv_update("STATE.md", phase="baseline")
-    before = sub_bench(router, probe)
+    before = sub_bench(router, probe, full)
     gitutil.ensure_clean()
     head_before = gitutil.git("rev-parse", "HEAD")
 
@@ -136,15 +173,26 @@ def improve(router, item):
         gitutil.git("checkout", "-b", branch)
         state.task_phase(id_, "implement")
         state.kv_update("STATE.md", phase="implement")
-        agent.run_agent(router, IMPL_SYS, f"Weakness: {text}\nChosen tech: {json.dumps(cand)}\nPlan: {summary}",
-                        stage="implement", max_steps=8)
-        s = subprocess.run([sys.executable, "run.py", "selftest"], cwd=ROOT, capture_output=True, text=True, timeout=600)
+        steps, step_limit = _int(crit, "implement_steps", 16), False
+        try:
+            agent.run_agent(router, IMPL_SYS, f"Weakness: {text}\nChosen tech: {json.dumps(cand)}\nPlan: {summary}",
+                            stage="implement", max_steps=steps, on_pause="raise")
+        except agent.TaskPaused as tp:
+            if tp.session_id:
+                task_session.complete(tp.session_id)
+            if tp.kind == "provider":
+                raise
+            step_limit = True
+        s = subprocess.run([sys.executable, "run.py", "selftest"], cwd=ROOT, capture_output=True, text=True,
+                           timeout=600, stdin=subprocess.DEVNULL)
         smoke = (s.stdout + s.stderr)[-400:]
         gitutil.commit_all(f"implement {id_}")
         changed = gitutil.changed_files(head_before, "HEAD")
         from core.tools import protected_paths
         hit = [f for f in changed if any(f == x or f.startswith(x + "/") for x in protected_paths())]
-        if not changed:
+        if step_limit:
+            why = [f"implementation did not finish within {steps} steps"]
+        elif not changed:
             why = ["agent made no changes"]
         elif hit:
             why = ["touched protected files: " + ", ".join(hit)]
@@ -153,7 +201,7 @@ def improve(router, item):
         else:
             state.task_phase(id_, "compare")
             state.kv_update("STATE.md", phase="compare")
-            after = sub_bench(router, probe)
+            after = sub_bench(router, probe, full)
             ok, why = judge(before, after, probe, crit)
             if state.on(crit.get("human_judge")):
                 print(f"\n[{id_}] {text}\nBEFORE: {before['passed']}/{before['total']} {before['seconds']}s probe={before.get('probe')}"
@@ -163,19 +211,22 @@ def improve(router, item):
                     state.log("JUDGEMENTS.md", f"- {state.now()} | {id_} | {'keep' if ok else 'drop'} | {text} | {cand.get('name')} | {why}")
                 except EOFError:
                     pass
-    except Exception as exc:
-        gitutil.git("checkout", base, check=False)
-        gitutil.git("branch", "-D", branch, check=False)
-        state.backlog_set(id_, "!", phase="failed", result=f"{type(exc).__name__}: {exc}")
+    except BaseException:
+        gitutil.abandon_branch(base, branch)  # outage, Ctrl+C, bug: leave no half-done branch or files behind
         raise
     finally:
         current = gitutil.git("rev-parse", "--abbrev-ref", "HEAD", check=False)
         if current and current != base:
-            gitutil.git("checkout", base, check=False)
+            gitutil.git("checkout", "-f", base, check=False)
 
     if ok:
         files = gitutil.changed_files(base, branch)
-        gitutil.git("merge", "--no-ff", branch, "-m", f"keep {id_}: {cand.get('name')}")
+        try:
+            gitutil.git("merge", "--no-ff", branch, "-m", f"keep {id_}: {cand.get('name')}")
+        except RuntimeError:
+            gitutil.git("merge", "--abort", check=False)
+            gitutil.abandon_branch(base, branch)
+            raise
         gitutil.git("tag", f"good-{id_}")
         result["kept"] = True
         result["restart"] = any(f.startswith("core/") or f == "run.py" for f in files)
@@ -200,6 +251,6 @@ def reflect(router):
     existing = " ".join(i["text"] for i in state.backlog_items())
     for t in r["tasks"]:
         tag = f"bench task '{t['id']}'"
-        if not t["ok"] and tag not in existing:
+        if not t["ok"] and not t.get("error") and tag not in existing:
             state.backlog_add(f"{tag} fails (answer: {t['answer'][:80]})", kind="self")
     return r

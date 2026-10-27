@@ -4,7 +4,9 @@ import json
 import os
 import random
 import time
+import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from core.state import ROOT
@@ -12,6 +14,16 @@ from core.state import ROOT
 CACHE = ROOT / ".cache"
 CACHE.mkdir(exist_ok=True)
 HEALTH = CACHE / "health.json"
+
+
+class ProviderUnavailable(RuntimeError):
+    """No provider could answer (none configured, all cooling down, or all failed). Usually transient."""
+
+
+def _url_ok(url):
+    """Keys are only ever sent over https (or to a local model server on this machine)."""
+    u = urllib.parse.urlparse(str(url))
+    return u.scheme == "https" or (u.scheme == "http" and u.hostname in ("localhost", "127.0.0.1", "::1"))
 
 
 class ProviderHTTPError(RuntimeError):
@@ -89,6 +101,8 @@ class Router:
         # Backward compatibility with old configs that stored a key directly.
         if key_env and (key_env.startswith(("sk-", "gsk_", "xai-")) or
                         (len(key_env) > 40 and not key_env.isupper() and "_" not in key_env[:10])):
+            print(f"[warning] providers.json holds a raw API key for '{p.get('name')}'. Move it to .env "
+                  f"and put the variable NAME in key_env; raw keys get committed and leaked.", file=sys.stderr)
             return key_env
         v = os.getenv(key_env) if key_env else None
         if v:
@@ -103,6 +117,8 @@ class Router:
     def candidates(self):
         now, out = time.time(), []
         for p in self.providers:
+            if not _url_ok(p.get("base_url", "")):
+                continue  # never send an API key to a plain-http or malformed endpoint
             key = self._get_key(p)
             if not key:
                 continue
@@ -157,7 +173,7 @@ class Router:
 
         candidates = self.candidates()
         if not candidates:
-            raise RuntimeError(
+            raise ProviderUnavailable(
                 "No usable provider is currently available. Check configured API keys and models; "
                 "providers in cooldown are skipped automatically."
             )
@@ -198,7 +214,7 @@ class Router:
                     provider_health["last_error"] = str(exc)[:800]
                 self._save()
                 errors.append(f"{provider_key}: {exc}")
-        raise RuntimeError(
+        raise ProviderUnavailable(
             "All configured providers failed for this request. The same conversation context "
             "was sent to each candidate. Failed providers have been put into cooldown. Details:\n"
             + "\n".join(errors[-8:])
